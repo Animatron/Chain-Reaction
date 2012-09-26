@@ -96,6 +96,7 @@ function start() {
         var p = chainscores;
         chainscores = chainscores + prevscores;
         prevscores = p;
+	return p;
     };
 
     var scoreAndStartChain = function() {
@@ -121,6 +122,8 @@ function start() {
             exp.v.state.x = this.x;
             exp.v.state.y = this.y;
             exp.band([time, Number.MAX_VALUE]);
+	    exp.v.children[1].children[0].xdata.text.fill.color = this.$.__data.color;
+	    exp.v.children[1].children[0].xdata.text.lines = "+"+this._.scores;
             this.$.parent.add(exp);
             this.$.parent.remove(this.$);
         }
@@ -135,16 +138,35 @@ function start() {
             .modify(afterFrame(1, move))
             .modify(afterFrame(1, updateSpeed));
             
-    var explosion = b("explosion").circle([0, 0], RADIUS)
-            .nostroke()
-            .fill("#fff")
-            .xscale([0, 2], [1, 6], C.E_BINOUT)
-            .alpha([2, 3], [1, 0], C.E_BIN)
+    var explosion = b("explosion")
+	    .band([0,3.5])
             .modify(function(t){
                 if (t > 3) {
                     this.$.parent.remove(this.$);
                 }
-            });
+            })
+	    .add(
+		b("circle").circle([0, 0], RADIUS)
+		    .nostroke()
+		    .fill("#fff")
+		    .xscale([0, 2], [1, 6], C.E_BINOUT)
+		    .alpha([2.2, 3], [1, 0], C.E_BIN)
+	    )
+	    .add(
+		b("blinker")
+		    .add(
+			b("text").text([-3, 0], "", 16, "Arial")
+			    .fill('#000')
+			    .nostroke()
+			    .band([0, 0.4])
+			    .alpha([0,0.2], [0,1])
+			    .alpha([0.2,0.4], [1,0])
+			    .loop(C.R_REPEAT)
+		    )
+		    .alpha([0, 0.5], [0, 0])
+		    .alpha([0.5, 1], [0, 1])
+		    .alpha([2, 3], [1, 0], C.E_BIN)
+	    ); 
 
     var detectCollisions = function(t) {
         var circles = [];
@@ -160,9 +182,9 @@ function start() {
 	
 	for (i = 0; i < explosions.length; i ++) {
             for (j = 0; j < circles.length; j ++) {
-                if (explosions[i].intersects(circles[j])) {
+	        if (explosions[i].children[0].intersects(circles[j])) {
                     circles[j].state.dead = true;
-                    scoreExplosion();
+		    circles[j].state.scores = scoreExplosion();
                 }
             }
         }
@@ -186,7 +208,10 @@ function start() {
 		.on(C.X_MCLICK, placeBomb);
         var counter = 42-(2*n);
         while (counter -- > 0) {
-	    level.add(b(circle_thingy).fill(fhsv(Math.random(), 0.7, 1, 1)));
+	    var col = fhsv(Math.random(), 0.7, 1, 1);
+	    var circ = b(circle_thingy).fill(col);
+	    circ.data({color:col});
+	    level.add(circ);
         }
 	return {level: level, clicks: 3};
     };
@@ -218,6 +243,20 @@ function start() {
 		this.$.xdata.text.lines = "Level " + currentLevelNumber;
 	    });
 
+    var message = b("message")
+	.text([WIDTH/2, HEIGHT/2], "!", 32, "Arial")
+	.fill("#fff")
+	.nostroke()
+	.alpha([0,1],[0,1])
+	.alpha([1,2],[1,1])
+	.alpha([2,3],[1,0])
+	.xscale([0,3],[0.8, 1.2])
+	.modify(function (t) {
+	    if (t > 3) {
+                this.$.parent.remove(this.$);
+            }
+	});
+    
     var scene = b("scene");
 
 
@@ -233,6 +272,14 @@ function start() {
         });
 
     scene.add(welcomeScreen);
+
+    var showMessage = function (txt) {
+	console.log(txt);
+	var m = b(message);
+	m.band([player.state.time, Number.MAX_VALUE]);
+	m.x.text.lines = txt;
+	gameScreen.add(m);
+    };
 
     var levelHolder = b("holder");
     gameScreen
@@ -270,12 +317,13 @@ function start() {
         clicks = currentLevelTemplate.clicks;
         chainscores = 0;
         prevscores = 0;
-        clicksHUD.v.xdata.text.lines = "Clicks: " + clicks;
+        clicksHUD.x.text.lines = "Clicks: " + clicks;
         var newLevel = b(currentLevelTemplate.level);
         if (activeLevel) levelHolder.remove(activeLevel);
         levelHolder.add(newLevel);
         activeLevel = newLevel;
+	showMessage("Level " + currentLevelNumber);
     };
-    var player = createPlayer('gameCanvas', {'mode':C.M_DYNAMIC, 'cnvs':{"bgfill": { color: "#000" },'width':WIDTH, 'height':HEIGHT}});
+    var player = createPlayer('gameCanvas', {'mode':C.M_DYNAMIC, 'anim':{"bgfill": { color: "#000" },'width':WIDTH, 'height':HEIGHT}});
     player.load(scene).play();
 }
