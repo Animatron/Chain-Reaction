@@ -1,4 +1,7 @@
 function start() {
+    var highScores = $.jStorage.get("animatron-chain-reaction-scores");
+    if (highScores === null) highScores = [];
+
     anm.M.collisions.pathDriven = true;
     var b = Builder._$, C = anm.C;
 
@@ -11,6 +14,18 @@ function start() {
     var state = "game";
 
     var inState = function (s) {return function () {return s === state;};};
+
+    // from underscore.js
+    var once = function(func) {
+        var ran = false;
+        var memo;
+        return function() {
+            if (ran) return memo;
+            ran = true;
+            memo = func.apply(this, arguments);
+            return memo;
+        };
+    };
 
     var countFrames = function () {
         if (this.currentFrame === undefined) this.currentFrame = 0;
@@ -67,10 +82,6 @@ function start() {
         this.speed = [Math.random() > 0.3 ? 1 : -1, Math.random() > 0.3 ? 1 : -1];
     };
 
-    var logFrame = function () {
-        console.log("Current frame:", this.currentFrame);
-    };
-
     var move = function (t) {
         if (this._.speed !== undefined) {
             this.x = this._.x + this._.speed[0];
@@ -86,7 +97,7 @@ function start() {
         }
     };
 
-    var clicks = 3;
+    var clicks = 0;
     var scores = 0;
     var chainscores = 0,
 	prevscores = 0;
@@ -141,7 +152,7 @@ function start() {
     var explosion = b("explosion")
 	    .band([0,3.5])
             .modify(function(t){
-                if (t > 3) {
+                if (t > 4) {
                     this.$.parent.remove(this.$);
                 }
             })
@@ -150,7 +161,8 @@ function start() {
 		    .nostroke()
 		    .fill("#fff")
 		    .xscale([0, 2], [1, 6], C.E_BINOUT)
-		    .alpha([2.2, 3], [1, 0], C.E_BIN)
+                    .xscale([3, 4], [6, 0.01], C.E_BINOUT)
+		    .alpha([3, 4], [1, 0], C.E_BIN)
 	    )
 	    .add(
 		b("blinker")
@@ -189,16 +201,49 @@ function start() {
             }
         }
 	if (explosions.length === 0 && circles.length === 0) {
-	    console.log("victory");
 	    startNextLevel();
 	}
 	else 
 	    if (clicks === 0 && explosions.length === 0 && circles.length > 0 && !newExplosion) {
-		console.log("failure");
-		restartCurrentLevel();
+		showGameOver();
 	    }
-	else
-	    console.log("game on");
+        // if we are on this line the game continues
+    };
+
+    var showGameOver = function() {
+        //TODO: fix this workaround for now disconnected effect of parents and children enable/disable
+        gameScreen.disable(); 
+        clicksHUD.disable();
+        var finalScores = scores + chainscores;
+
+        highScores.push(finalScores);
+        highScores.sort(function(a,b) {return a < b;});
+        
+        var m = highScores[0] === finalScores ? "You've got a highscore " : "You have scored ";
+        
+        if (highScores.length > 7) highScores.pop();
+
+        
+
+        $.jStorage.set("animatron-chain-reaction-scores", highScores);
+
+        //updateScoresTable();
+        
+        showMessage(m + finalScores, function(t) {
+            if (t > 3) {
+                
+                welcomeScreen.enable();
+                scoresTable.enable();
+                updateScoresTable();
+            }
+        });
+    };
+
+    var updateScoresTable = function(){
+        scoresTable.x.text.lines = ["Highest scores:"];
+        highScores.forEach(function(el, n, array){
+            scoresTable.x.text.lines.push(el);
+        });
     };
 
     var getLevelTemplate = function(n) {
@@ -222,6 +267,7 @@ function start() {
             .fill("#fff")
             .nostroke()
 	    .on(C.X_MCLICK, doIf(inState("game"), function () {
+                // reduce clicks
 		clicks = clicks - 1;
 		if (clicks < 0) clicks = 0;
 		this.$.xdata.text.lines = "Clicks: " + clicks;
@@ -243,6 +289,8 @@ function start() {
 		this.$.xdata.text.lines = "Level " + currentLevelNumber;
 	    });
 
+    
+
     var message = b("message")
 	.text([WIDTH/2, HEIGHT/2], "!", 32, "Arial")
 	.fill("#fff")
@@ -252,33 +300,47 @@ function start() {
 	.alpha([2,3],[1,0])
 	.xscale([0,3],[0.8, 1.2])
 	.modify(function (t) {
-	    if (t > 3) {
-                this.$.parent.remove(this.$);
-            }
+            if (t > 3) this.$.parent.remove(this.$);
 	});
+    
     
     var scene = b("scene");
 
+    window.scene = scene;
+    
+    var scoresTable = b("scoresTable");
+    scoresTable
+        .text([WIDTH/2 + 10, 50], "Latest scores: ", 32, "Arial")
+        .fill("#fff").nostroke()
+        .modify(countFrames)
+        .modify(afterFrame(1,function(){
+            updateScoresTable();
+        }));
 
     var welcomeScreen = b("welcomeScreen");
     welcomeScreen
-        .text([WIDTH/2, HEIGHT/2], "Click to start!", 32, "Arial")
+        .text([WIDTH/2, HEIGHT - 50], "Click to start!", 32, "Arial")
         .fill("#fff")
         .nostroke()
         .on(C.X_MCLICK, function() {
-            scene.remove(welcomeScreen);
-            scene.add(gameScreen);
+            //TODO: fix this workaround for now disconnected effect of parents and children enable/disable
+            gameScreen.enable();
+            clicksHUD.enable();
+            welcomeScreen.disable();
+            scoresTable.disable();
             startLevel(1);
         });
-
+    scene.add(scoresTable);
     scene.add(welcomeScreen);
-
-    var showMessage = function (txt) {
-	console.log(txt);
-	var m = b(message);
+    
+    var showMessage = function (txt, callback) {
+	var m = b(message);   
 	m.band([player.state.time, Number.MAX_VALUE]);
-	m.x.text.lines = txt;
-	gameScreen.add(m);
+        m.x.text.lines = txt;
+        if(callback !== undefined){
+            m.modify(callback);
+        }
+	scene.add(m);
     };
 
     var levelHolder = b("holder");
@@ -295,12 +357,19 @@ function start() {
                 startNextLevel();
             }
         });
+
+    scene.add(gameScreen);
+    //TODO: fix this workaround for now disconnected effect of parents and children enable/disable
+    gameScreen.disable();
+    clicksHUD.disable();
+
     var restartCurrentLevel = function() {
         scores = scoresBeforeLevel;
         startLevel(currentLevelNumber);
     };
 
     var startNextLevel = function() {
+        // start next level
         currentLevelNumber += 1;
         scoreAndStartChain();
         startLevel(currentLevelNumber);
@@ -311,10 +380,16 @@ function start() {
     
     var scoresBeforeLevel = 0;
     var startLevel = function (n) {
+        // start level
+        if (n < 2) {
+            scores = 0;
+            scoresBeforeLevel = 0;
+            clicks = 0;
+        }
         currentLevelNumber = n;
         scoresBeforeLevel = scores;
         var currentLevelTemplate = getLevelTemplate(n);
-        clicks = currentLevelTemplate.clicks;
+        clicks += currentLevelTemplate.clicks;
         chainscores = 0;
         prevscores = 0;
         clicksHUD.x.text.lines = "Clicks: " + clicks;
